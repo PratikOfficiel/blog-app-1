@@ -42,7 +42,7 @@ const creatTransporter = async () => {
     return Transport;
 }
 
-const sendEmail = async ({email, username, res}) => {
+const sendEmail = async ({ email, username, res }) => {
 
     const confirmationToken = encrypt(username);
     const apiUrl = process.env.API_URL || "http://localhost:4000";
@@ -53,7 +53,7 @@ const sendEmail = async ({email, username, res}) => {
         from: "Node test application",
         to: email,
         subject: "Email confirmation",
-        html:`Press the following link to verify your email: <a href=${apiUrl}/confirmation/${confirmationToken}>Verification Link</a>`,
+        html: `Press the following link to verify your email: <a href=${apiUrl}/confirmation/${confirmationToken}>Verification Link</a>`,
     }
 
     transport.sendMail(mailOptions, (err, info) => {
@@ -70,21 +70,21 @@ const sendEmail = async ({email, username, res}) => {
     });
 }
 
-exports.verifyEmail = async(req, res) => {
+exports.verifyEmail = async (req, res) => {
     try {
-        const {confirmationToken} = req.params;
+        const { confirmationToken } = req.params;
         const username = decrypt(confirmationToken);
 
-        const user = USER.findOne({username: username});
+        const user = USER.findOne({ username: username });
 
-        if (user){
+        if (user) {
 
             user.isConfirmed = true;
             await user.save();
 
-            res.status(200).json({message: "user verification successful", data: user});
+            res.status(200).json({ message: "user verification successful", data: user });
         }
-        else{
+        else {
             res.status(409).send("user not found");
         }
     } catch (error) {
@@ -124,5 +124,46 @@ exports.signup = async (req, res) => {
         res.status(201).send(user);
     } catch (error) {
         console.log(error);
+    }
+}
+
+exports.login = async (req, res) => {
+    try {
+        const { emailOrUsername, password } = req.body;
+
+        if (!(emailOrUsername && password)) {
+            return res.status(400).send('All data is required');
+        }
+
+        let regexEmail = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+        const data = regexEmail.test(emailOrUsername)
+            ? {
+                email: emailOrUsername,
+            }
+            : {
+                username: emailOrUsername,
+            };
+        
+        const user = await USER.findOne(data);
+
+        if (user && (await bcrypt.compare(password, user.password))){
+            const email = user.email;
+            const token = jwt.sign(
+                {userId: user._id, email},
+                process.env.TOKEN_SECRET_KEY,
+                {
+                    "expiresIn": "2h"
+                }
+            );
+
+            user.token = token;
+
+            res.status(201).json(user);
+        }
+
+        res.status(400).send("Invalid credentials");
+    } catch (error) {
+        console.error(error);
+        return res.status(400).send(err.message);
     }
 }
